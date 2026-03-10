@@ -6,4 +6,4 @@
 src/nodemcuv2/sensitive_data.c
 notes/*
 
-*compile_commands.json
+*compile_commands*

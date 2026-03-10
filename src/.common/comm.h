@@ -40,5 +40,5 @@ typedef struct
 typedef struct
 {
     char index[2];
-    volatile FoodCondition FoodCondition; // Why does it let me do this
+    volatile FoodCondition State;
 } box_t;
