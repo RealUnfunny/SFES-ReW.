@@ -1,15 +1,6 @@
+#include ".common/comm.h"
 #include <Arduino.h>
 #include <SoftwareSerial.h>
-
-#define DEBUG_MODE
-
-enum FoodCondition
-{
-    FRESH,
-    GOING_BAD,
-    EXPIRED,
-    ERROR
-};
 
 enum Pins
 {
@@ -50,9 +41,7 @@ void setup()
     for (int pins : status_pins)
         digitalWrite(pins, LOW);
 
-#ifdef DEBUG_MODE
-    Serial.println("SFES Main Indicator Init'zed");
-#endif
+    d_SerialPrintln("SFES Main Indicator Init'sed");
 
     for (int pins : status_pins)
         pinMode(pins, OUTPUT);
@@ -71,12 +60,10 @@ void UpdateStatusDisplay(int Cond)
     int alc_reading = analogRead(Pins::ALC_SENSOR_PIN);
     int ch3_reading = analogRead(Pins::CH3_SENSOR_PIN);
 
-#ifdef DEBUG_MODE
-    Serial.print("Sensor Readings:\nAlcohol Readings:");
-    Serial.print(alc_reading);
-    Serial.print("| CH3 Readings: ");
-    Serial.print(alc_reading);
-#endif
+    d_SerialPrint("Sensor Readings:\nAlcohol Readings:");
+    d_SerialPrint(alc_reading);
+    d_SerialPrint("| CH3 Readings: ");
+    d_SerialPrint(alc_reading);
 
     if (alc_reading >= ThresholdPins::ALC_THRESHOLD_EXP || ch3_reading >= CH3_THRESHOLD_EXP)
         digitalWrite(Pins::EXPIRED_PIN, HIGH);
