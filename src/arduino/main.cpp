@@ -1,4 +1,4 @@
-#include ".common/comm.h"
+#include <.common/comm.h>
 #include <Arduino.h>
 #include <SoftwareSerial.h>
 
@@ -11,7 +11,7 @@ enum Pins
     CH3_SENSOR_PIN = A1
 };
 
-enum ThresholdPins
+enum ThresholdPins // Current Testing Values
 {
     ALC_THRESHOLD_BAD = 160,
     ALC_THRESHOLD_EXP = 500,

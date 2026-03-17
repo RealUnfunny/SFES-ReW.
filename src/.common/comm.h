@@ -2,6 +2,7 @@
 
 // Debug Macros, for printing to the Serial Monitor
 // only when 'DEBUG_MODE' is defined
+
 #ifdef DEBUG_MODE
 
 #define d_SerialBegin(x) Serial.begin(x)
