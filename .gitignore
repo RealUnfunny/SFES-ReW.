@@ -8,3 +8,4 @@ notes/*
 
 *compile_commands*
 *cache*
+src/nodemcu/tim/*

@@ -2,6 +2,8 @@
 #include <Arduino.h>
 #include <SoftwareSerial.h>
 
+#include "oled_graphics.h"
+
 enum Pins
 {
     FRESH_PIN = 2,
@@ -48,11 +50,14 @@ void setup()
 
     pinMode(Pins::ALC_SENSOR_PIN, INPUT);
     pinMode(Pins::CH3_SENSOR_PIN, INPUT);
+
+    OledScreenInit();
 }
 
 void loop()
 {
     UpdateStatusDisplay(1);
+    LoadingScreen(false);
 }
 
 void UpdateStatusDisplay(int Cond)
@@ -61,9 +66,9 @@ void UpdateStatusDisplay(int Cond)
     int ch3_reading = analogRead(Pins::CH3_SENSOR_PIN);
 
     d_SerialPrint("Sensor Readings:\nAlcohol Readings:");
-    d_SerialPrint(alc_reading);
+    d_SerialPrintV(alc_reading);
     d_SerialPrint("| CH3 Readings: ");
-    d_SerialPrint(alc_reading);
+    d_SerialPrintV(alc_reading);
 
     if (alc_reading >= ThresholdPins::ALC_THRESHOLD_EXP || ch3_reading >= CH3_THRESHOLD_EXP)
         digitalWrite(Pins::EXPIRED_PIN, HIGH);

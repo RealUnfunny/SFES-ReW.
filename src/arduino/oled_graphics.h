@@ -1,3 +1,5 @@
+#pragma once
+
 // For all the graphics/animations for the Adafruit SSD1306
 
 #include <Adafruit_GFX.h>
@@ -12,3 +14,10 @@
 #define LOGO_WDH 16
 #define OLED_RESET -1
 #define SCR_ADDR 0x3C
+
+void OledScreenInit();
+// To run checks if the screen has been allocated memory, and runs
+// checks for various things
+
+void LoadingScreen(bool EndEvent);
+// Cooling Loading Screen

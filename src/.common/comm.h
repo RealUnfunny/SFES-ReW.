@@ -3,11 +3,15 @@
 // Debug Macros, for printing to the Serial Monitor
 // only when 'DEBUG_MODE' is defined
 
+#define DEBUG_MODE
+
 #ifdef DEBUG_MODE
 
 #define d_SerialBegin(x) Serial.begin(x)
 #define d_SerialPrint(x) Serial.print(F(x))
+#define d_SerialPrintV(x) Serial.print(x) // Print Value
 #define d_SerialPrintln(x) Serial.println(F(x))
+#define d_SerialPrintlnV(x) Serial.println(x) // Print Value
 #define d_SerialPrintf(...) Serial.printf(__VA_ARGS__)
 #define d_delay(x) delay(x)
 
