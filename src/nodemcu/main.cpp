@@ -1,10 +1,17 @@
+#define NODEMCU_FILE
+
+#define NOTIFY_INTERVAL_MS 60000 // 1 minute
+
+unsigned long last_notify = 0;
+
+#include <Arduino.h>
 #include <SoftwareSerial.h>
-#include <ctime>
 
 #include ".common/comm.h"
-#include "setup_functions.h"
+#include "CsvOperations.h"
+#include "SetupFunctions.h"
+#include "WebserverHost.h"
 
-#define INVENTORY_FILE "/inventory.csv"
 // opting for .csv because it's faster to parse and write
 // than a formatted json file
 
@@ -21,21 +28,59 @@
 #define MAX_BOX_COUNT 8
 // Current Testing Value, total count should be ~260 boxes
 
-SoftwareSerial arduino(D6, D5);
-WiFiClient client_server;
-ESP8266WebServer server(HTTP_PORT);
-
-void WifiSetup();
-void NTPSetup();
+SoftwareSerial arduino_wire(D2, D1);
+ESP8266WebServer server(80);
 
 void setup()
 {
-    WifiSetup();
+  d_SerialBegin(115200);
 
-    d_SerialBegin(115200);
-    arduino.begin(9600);
+  WifiSetup();
+  NTPSetup();
+  NTFYSetup();
+  SDSetup();
+
+  LoadPhysicals();
+  arduino_wire.begin(9600);
+
+  WebSetup(&server);
 }
 
 void loop()
 {
+  server.handleClient();
+  if (arduino_wire.available())
+  {
+    delay(50);
+    String msg = arduino_wire.readStringUntil(MSG_TERMINATOR);
+    msg.trim();
+    d_SerialPrintln(msg); // debug, see what's actually arriving
+    if (!strcmp(msg.c_str(), ReqActBox2))
+    {
+      d_SerialPrintln("Data requested!");
+      WritePhysicals(&arduino_wire);
+    }
+    if (!strcmp(msg.c_str(), UpdBoxes))
+    {
+      d_SerialPrintln("Expecting Boxes.");
+      arduino_wire.print("Ok.^");
+      delay(50);
+      String msg = arduino_wire.readStringUntil(MSG_TERMINATOR);
+      delay(50);
+      CSVUpdate(msg);
+    }
+  }
+  else
+  {
+    d_SerialPrintln("Read Nothing?");
+    delay(1000);
+  }
+
+  unsigned long now = millis();
+
+  if (now - last_notify >= NOTIFY_INTERVAL_MS)
+  {
+    last_notify = now;
+    CheckAndNotify();
+  }
 }

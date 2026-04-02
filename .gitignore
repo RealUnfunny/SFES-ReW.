@@ -3,7 +3,7 @@
 .gcc-flags.json
 .ccls
 
-src/nodemcu/sensitive_data.c
+src/nodemcu/sensitive_data.cpp
 notes/*
 
 *compile_commands*

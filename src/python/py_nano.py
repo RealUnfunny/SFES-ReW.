@@ -8,6 +8,6 @@ env = DefaultEnvironment()
 
 env.Replace(
     COMPILATIONDB_PATH=os.path.join(
-        str(env.subst("$SRC_DIR")), "src/arduino", "compile_commands.json"
+        str(env.subst("$SRC_DIR")), "src/nano", "compile_commands.json"
     )
 )

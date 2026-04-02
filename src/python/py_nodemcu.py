@@ -8,6 +8,6 @@ env = DefaultEnvironment()
 
 env.Replace(
     COMPILATIONDB_PATH=os.path.join(
-        str(env.subst("$SRC_DIR")), "nodemcu", "compile_commands.json"
+        str(env.subst("$SRC_DIR")), "src/nodemcu", "compile_commands.json"
     )
 )
