@@ -1,5 +1,6 @@
 #pragma once
 
+#include "SoftwareSerial.h"
 #define NODEMCU_FILE
 
 #include <stdint.h>
@@ -36,6 +37,18 @@ void NTPSetup();
  */
 void NTFYSetup();
 
+/**
+ * @brief Ensures that the inventory file, and all related files are available on the SD card
+ *        at the time of boot.
+ */
 void SDSetup();
 
+/**
+ * @brief Entry notification that is sent on the booting of the system.
+ */
 void BootNotify();
+
+/**
+ * @brief Handles all the communication with the Arduino Uno unit.
+ */
+void MessageHandler(SoftwareSerial *serial);

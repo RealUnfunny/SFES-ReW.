@@ -2,321 +2,440 @@
 
 #include "NtfyNotifier.h"
 #include <Arduino.h>
-#include <CSV_Parser.h> // screw you clang, ignoring blatant error
-#include <FS.h>
+#include <CSV_Parser.h>
 #include <SD.h>
+#include <SPI.h>
 #include <SoftwareSerial.h>
 #include <cstdint>
-#include <sys/select.h>
-#include <sys/types.h>
 
 #include ".common/comm.h"
+#include "WString.h"
 #include <NTPClient.h>
 #include <WiFiUdp.h>
+#include <sys/types.h>
 
-int record_count = 0;
+File read_file;
+File edit_file;
+File copy_file;
 
-CSV_Parser parser("ucssuLuLcc", true, ',');
-// The .csv will have data stored in the following format:
-// ->   serial_no, box_id, item_name, reg_date, expiry_date, physical, condition;
-// The first is an unsigned 8 bit int(s), next two are strings(s), next
-// two are unsigned long(s), while physical is a boolean, so it can be
-// interpret as a character
-CSV_Parser physical_parser("-s---uc-", true, ',');
-// '-' means to ignore that column, thus saving memory.
-CSV_Parser serial_parser("uc------", true, ',');
-CSV_Parser cp("-ssuLuLcc", true, ',');
-
-void LoadPhysicals()
+inline void InventoryInit()
 {
-  d_SerialPrintln("Data requested! 2");
-  if (physical_parser.readSDfile(INVENTORY_FILE))
-  {
-    d_SerialPrintln("File read!");
-  }
+  if ((read_file = SD.open(INVENTORY_FILE, FILE_READ)))
+    d_SerialPrintln("File Exists.");
   else
-  {
-    d_SerialPrintln("Whoops! File does not exist!");
-  }
+    d_SerialPrintln("Error! File not found!");
 }
+
+// we're going to be using row-by-row indexing to fix memory/buffer overflows
+// order is something like this
+// 0         1       2          3         4            5         6
+// notified, box_id, item_name, reg_date, expiry_date, physical, condition
+// uint8_t,  string, string,    ulong,    ulong,       uint8_t,  uint8_t
 
 void WritePhysicals(SoftwareSerial *sender)
 {
-  char **box_id = (char **)physical_parser["box_id"];
-  uint8_t *physical = (uint8_t *)physical_parser["physical"];
-  record_count = physical_parser.getRowsCount();
-  d_SerialPrintf("Record count: %d\n", record_count);
+  InventoryInit();
 
-  for (int i = 0; i < record_count; i++)
+  char field[32];
+  uint8_t field_idx = 0;
+  uint8_t col = 0;
+
+  char box_id[16] = {0};
+  uint16_t profile = 0;
+  bool is_physical = false;
+
+  while (read_file.available())
   {
-    d_SerialPrintf("Record %d: %s, physical: %d\n", i, box_id[i], physical[i]);
-    if (physical[i])
+    char c = read_file.read();
+
+    if (c == ',' || c == '\n' || c == '\r')
     {
-      sender->print(box_id[i]);
-      sender->print(",");
-    }
-  }
-  sender->print(MSG_TERMINATOR);
-  d_SerialPrintln("Done sending!");
-}
+      field[field_idx] = '\0';
 
-void SaveInventory(InventoryRecordLine *records)
-{
-  SD.remove(INVENTORY_FILE);
-  File f = SD.open(INVENTORY_FILE, FILE_WRITE);
-  if (!f)
-    return;
-
-  f.println("serial_no,box_id,item_name,reg_date,expiry_date,physical");
-
-  for (int i = 0; i < record_count; i++)
-  {
-    f.print(i + 1);
-    f.print(',');
-    f.print(records[i].box_id);
-    f.print(',');
-    f.print(records[i].item_name);
-    f.print(',');
-    f.print(records[i].reg_date);
-    f.print(',');
-    f.print(records[i].expiry_date);
-    f.print(',');
-    f.println(records[i].physical ? "1" : "0");
-  }
-  f.close();
-}
-
-void AddRecord(InventoryRecordLine *record)
-{
-  if (!serial_parser.readSDfile(INVENTORY_FILE))
-    return;
-
-  uint8_t *serials = (uint8_t *)serial_parser["serial_no"];
-  int count = serial_parser.getRowsCount();
-  uint8_t new_serial = (count > 0) ? serials[count - 1] + 1 : 0;
-
-  File f = SD.open(INVENTORY_FILE, FILE_WRITE);
-  if (!f)
-    return;
-
-  f.print(new_serial);
-  f.print(',');
-  f.print(record->box_id);
-  f.print(',');
-  f.print(record->item_name);
-  f.print(',');
-  f.print(record->reg_date);
-  f.print(',');
-  f.print(record->expiry_date);
-  f.print(',');
-  f.print(record->physical ? 1 : 0);
-  f.print(',');
-  f.println(record->condition);
-  f.close();
-
-  String msg = String("**") + record->item_name + "** has been added to box **" + record->box_id + "**.";
-  NtfyNotify("white_check_mark,package", "Item Added", msg.c_str(), "default");
-}
-
-void DeleteRecord(uint8_t serial_no)
-{
-  bool offset = 0;
-  if (!cp.readSDfile(INVENTORY_FILE))
-    return;
-
-  uint8_t *serials = (uint8_t *)cp["serial_no"];
-  char **box_id = (char **)cp["box_id"];
-  char **item_name = (char **)cp["item_name"];
-  uint32_t *reg_date = (uint32_t *)cp["reg_date"];
-  uint32_t *expiry_date = (uint32_t *)cp["expiry_date"];
-  char *physical = (char *)cp["physical"];
-  char *condition = (char *)cp["condition"];
-  int count = cp.getRowsCount();
-
-  SD.remove(INVENTORY_FILE);
-  File f = SD.open(INVENTORY_FILE, FILE_WRITE);
-  if (!f)
-    return;
-
-  f.println("serial_no,box_id,item_name,reg_date,expiry_date,physical,condition");
-
-  for (int i = 0; i < count; i++)
-  {
-    if (serials[i] == serial_no)
-    {
-      offset = 1;
-      continue; // skip this record
-    }
-    f.print(i - offset);
-    f.print(',');
-    f.print(box_id[i]);
-    f.print(',');
-    f.print(item_name[i]);
-    f.print(',');
-    f.print(reg_date[i]);
-    f.print(',');
-    f.print(expiry_date[i]);
-    f.print(',');
-    f.print(physical[i] ? "1" : "0");
-    f.print(',');
-    f.println(condition[i]);
-  }
-  f.close();
-
-  String msg = String("Item with serial **") + serial_no + "** has been deleted from inventory.";
-  NtfyNotify("wastebasket", "Item Deleted", msg.c_str(), "default");
-}
-
-void CleanCSV()
-{
-  if (!cp.readSDfile(INVENTORY_FILE))
-    return;
-
-  char **ids = (char **)cp["box_id"];
-  char **items = (char **)cp["item_name"];
-  uint32_t *dateRegs = (uint32_t *)cp["reg_date"];
-  uint32_t *expiries = (uint32_t *)cp["expiry_date"];
-  uint8_t *physicals = (uint8_t *)cp["physical"];
-  uint8_t *condition = (uint8_t *)cp["condition"];
-  int count = cp.getRowsCount();
-
-  SD.remove(INVENTORY_FILE);
-  File f = SD.open(INVENTORY_FILE, FILE_WRITE);
-  if (!f)
-    return;
-
-  f.println("serial_no,box_id,item_name,reg_date,expiry_date,physical");
-
-  for (int i = 0; i < count; i++)
-  {
-    f.print(i + 1);
-    f.print(',');
-    f.print(ids[i]);
-    f.print(',');
-    f.print(items[i]);
-    f.print(',');
-    f.print(dateRegs[i]);
-    f.print(',');
-    f.print(expiries[i]);
-    f.print(',');
-    f.println(physicals[i] ? "1" : "0");
-  }
-  f.close();
-}
-
-void CSVUpdate(String csv_data)
-{
-  CSV_Parser cp(/*format*/ "ucssuLuLcc");
-  if (!cp.readSDfile(INVENTORY_FILE))
-    return;
-
-  uint8_t *serials = (uint8_t *)cp["serial_no"];
-  char **ids = (char **)cp["box_id"];
-  char **items = (char **)cp["item_name"];
-  uint32_t *dateRegs = (uint32_t *)cp["reg_date"];
-  uint32_t *expiries = (uint32_t *)cp["expiry_date"];
-  char *physicals = (char *)cp["physical"];
-  char *conditions = (char *)cp["condition"];
-  int count = cp.getRowsCount();
-
-  // parse incoming csv_data
-  CSV_Parser update_cp(/*format*/ "sc", false, ',');
-  update_cp << csv_data.c_str();
-  update_cp.parseLeftover();
-  char **update_ids = (char **)update_cp[0];
-  char *update_conditions = (char *)update_cp[1];
-  int update_count = update_cp.getRowsCount();
-
-  SD.remove(INVENTORY_FILE);
-  File f = SD.open(INVENTORY_FILE, FILE_WRITE);
-  if (!f)
-    return;
-
-  f.println("serial_no,box_id,item_name,reg_date,expiry_date,physical,condition");
-
-  for (int i = 0; i < count; i++)
-  {
-    char condition = conditions[i]; // default to existing
-
-    // only bother looking up update if it has a physical unit
-    if (physicals[i])
-    {
-      for (int j = 0; j < update_count; j++)
+      if (col == 1)
       {
-        if (strcmp(ids[i], update_ids[j]) == 0)
+        // box_id
+        strncpy(box_id, field, sizeof(box_id) - 1);
+        box_id[sizeof(box_id) - 1] = '\0';
+      }
+      else if (col == 5)
+        // physical flag
+        is_physical = (field[0] == '1');
+      else if (col == 7)
+        // profile enum
+        profile = (uint16_t)atoi(field);
+
+      field_idx = 0;
+      col++;
+
+      if (c == '\n' || c == '\r')
+      {
+        if (is_physical)
         {
-          condition = update_conditions[j];
-          break;
+          sender->print(box_id);
+          sender->print(',');
+          sender->print(profile);
+          sender->print(';');
         }
+
+        col = 0;
+        profile = 0;
+        is_physical = false;
+        box_id[0] = '\0';
+      }
+    }
+    else
+    {
+      if (field_idx < sizeof(field) - 1)
+        field[field_idx++] = c;
+    }
+  }
+
+  read_file.close();
+
+  sender->print(MSG_TERMINATOR);
+}
+
+void AddRecord(const InventoryRecordLine *record)
+{
+  d_SerialPrint("Free Heap:");
+  d_SerialPrintlnV(ESP.getFreeHeap());
+
+  if ((edit_file = SD.open(INVENTORY_FILE, FILE_WRITE)))
+  {
+    edit_file.printf("0,%s,%s,%u,%u,%d,%d,%u\n", record->box_id, record->item_name, record->reg_date,
+                     record->expiry_date, record->physical, record->condition, record->preset);
+    edit_file.close();
+    return;
+  }
+  d_SerialPrint("Error! File Not found");
+}
+
+void DeleteRecord(const char *target_box_id)
+{
+  File in_file = SD.open(INVENTORY_FILE, FILE_READ);
+  if (!in_file)
+    return;
+
+  File out_file = SD.open(INVENTORY_FILE_TEMP, FILE_WRITE);
+  if (!out_file)
+  {
+    in_file.close();
+    return;
+  }
+
+  char line_buffer[BUFFER_LIMIT];
+
+  while (in_file.available())
+  {
+    size_t len = in_file.readBytesUntil('\n', line_buffer, sizeof(line_buffer) - 1);
+    line_buffer[len] = '\0';
+
+    while (len > 0 && (line_buffer[len - 1] == '\n' || line_buffer[len - 1] == '\r'))
+      line_buffer[--len] = '\0';
+
+    char *cols[8];
+    char *token = strtok(line_buffer, ",");
+
+    int i = 0;
+    while (token && i < 8)
+    {
+      cols[i++] = token;
+      token = strtok(NULL, ",");
+    }
+
+    if (i < 8)
+      continue;
+
+    if (strcmp(cols[1], target_box_id) == 0)
+      continue;
+
+    out_file.print(cols[0]); // notified
+    out_file.print(',');
+    out_file.print(cols[1]); // box_id
+    out_file.print(',');
+    out_file.print(cols[2]); // item_name
+    out_file.print(',');
+    out_file.print(cols[3]); // reg_date
+    out_file.print(',');
+    out_file.print(cols[4]); // expiry_date
+    out_file.print(',');
+    out_file.print(cols[5]); // physical
+    out_file.print(',');
+    out_file.print(cols[6]); // condition
+    out_file.print(',');
+    out_file.println(cols[7]); // profile
+  }
+
+  in_file.close();
+  out_file.close();
+
+  SD.remove(INVENTORY_FILE);
+  SD.rename(INVENTORY_FILE_TEMP, INVENTORY_FILE);
+}
+
+void UpdateCSV(const char *csv_input)
+{
+  const int max_updates = 16;
+
+  char update_ids[max_updates][10];
+  uint8_t update_conditions[max_updates];
+  int update_count = 0;
+
+  char buffer[BUFFER_LIMIT];
+  strncpy(buffer, csv_input, sizeof(buffer) - 1);
+  buffer[sizeof(buffer) - 1] = '\0';
+
+  char *line = buffer;
+
+  while (*line != '\0' && update_count < max_updates)
+  {
+    char *next_line = strchr(line, '\n');
+    if (next_line)
+    {
+      *next_line = '\0';
+      next_line++;
+    }
+
+    size_t line_len = strlen(line);
+    while (line_len > 0 && (line[line_len - 1] == '\r' || line[line_len - 1] == '\n'))
+      line[--line_len] = '\0';
+
+    if (*line != '\0')
+    {
+      char *comma = strchr(line, ',');
+      if (comma)
+      {
+        *comma = '\0';
+        char *id = line;
+        char *cond = comma + 1;
+
+        strncpy(update_ids[update_count], id, sizeof(update_ids[0]) - 1);
+        update_ids[update_count][sizeof(update_ids[0]) - 1] = '\0';
+        update_conditions[update_count] = (uint8_t)atoi(cond);
+        update_count++;
       }
     }
 
-    f.print(serials[i]);
-    f.print(',');
-    f.print(ids[i]);
-    f.print(',');
-    f.print(items[i]);
-    f.print(',');
-    f.print(dateRegs[i]);
-    f.print(',');
-    f.print(expiries[i]);
-    f.print(',');
-    f.print(physicals[i] ? "1" : "0");
-    f.print(',');
-    f.println(condition);
+    if (!next_line)
+      break;
+
+    line = next_line;
   }
-  f.close();
+
+  File in_file = SD.open(INVENTORY_FILE, FILE_READ);
+  if (!in_file)
+    return;
+
+  File out_file = SD.open(INVENTORY_FILE_TEMP, FILE_WRITE);
+  if (!out_file)
+  {
+    in_file.close();
+    return;
+  }
+
+  char line_buffer[BUFFER_LIMIT];
+
+  while (in_file.available())
+  {
+    size_t len = in_file.readBytesUntil('\n', line_buffer, sizeof(line_buffer) - 1);
+    line_buffer[len] = '\0';
+
+    while (len > 0 && (line_buffer[len - 1] == '\n' || line_buffer[len - 1] == '\r'))
+      line_buffer[--len] = '\0';
+
+    char *cols[8];
+    char *token = strtok(line_buffer, ",");
+    int i = 0;
+
+    while (token && i < 8)
+    {
+      cols[i++] = token;
+      token = strtok(NULL, ",");
+    }
+
+    if (i < 8)
+      continue;
+
+    uint8_t notified = (uint8_t)atoi(cols[0]);
+    uint8_t current_condition = (uint8_t)atoi(cols[6]);
+
+    for (int j = 0; j < update_count; j++)
+    {
+      if (strcmp(cols[1], update_ids[j]) == 0)
+      {
+        uint8_t incoming_condition = update_conditions[j];
+        bool should_update = false;
+
+        if (current_condition == UNKNOWN && incoming_condition != UNKNOWN)
+        {
+          should_update = true;
+        }
+        else if (incoming_condition > current_condition)
+        {
+          should_update = true;
+        }
+
+        if (should_update)
+        {
+          current_condition = incoming_condition;
+          notified = 0;
+        }
+
+        break;
+      }
+    }
+
+    out_file.print(notified);
+    out_file.print(',');
+    out_file.print(cols[1]); // box_id
+    out_file.print(',');
+    out_file.print(cols[2]); // item_name
+    out_file.print(',');
+    out_file.print(cols[3]); // reg_date
+    out_file.print(',');
+    out_file.print(cols[4]); // expiry_date
+    out_file.print(',');
+    out_file.print(cols[5]); // physical
+    out_file.print(',');
+    out_file.print(current_condition);
+    out_file.print(',');
+    out_file.println(cols[7]); // profile
+  }
+
+  in_file.close();
+  out_file.close();
+
+  SD.remove(INVENTORY_FILE);
+  SD.rename(INVENTORY_FILE_TEMP, INVENTORY_FILE);
+}
+
+FoodCondition WorseCondition(FoodCondition a, FoodCondition b)
+{
+  if (a == UNKNOWN)
+    return b;
+  if (b == UNKNOWN)
+    return a;
+  return (a > b) ? a : b;
 }
 
 void CheckAndNotify()
 {
-  cp = CSV_Parser(/*format*/ "-ss-uLcc");
-  if (!cp.readSDfile(INVENTORY_FILE))
+  File in_file = SD.open(INVENTORY_FILE, FILE_READ);
+  if (!in_file)
     return;
 
-  char **ids = (char **)cp["box_id"];
-  char **items = (char **)cp["item_name"];
-  uint32_t *expiries = (uint32_t *)cp["expiry_date"];
-  char *physicals = (char *)cp["physical"];
-  char *conditions = (char *)cp["condition"];
-  int count = cp.getRowsCount();
-
-  uint32_t now = time(nullptr);
-
-  for (int i = 0; i < count; i++)
+  SD.remove(INVENTORY_FILE_TEMP);
+  File out_file = SD.open(INVENTORY_FILE_TEMP, FILE_WRITE);
+  if (!out_file)
   {
-    if (!physicals[i])
-      continue;
-
-    if (expiries[i] < now)
-    {
-      String msg = String("**") + items[i] + "** in box **" + ids[i] + "** has expired!";
-      NtfyNotify("warning,skull", "Item Expired!", msg.c_str(), "urgent");
-      continue;
-    }
-
-    switch (conditions[i])
-    {
-      case 2:
-        {
-          String msg = String("**") + items[i] + "** in box **" + ids[i] + "** is expiring soon.";
-          NtfyNotify("warning", "Item Expiring", msg.c_str(), "high");
-        }
-        break;
-      case 3:
-        {
-          String msg = String("**") + items[i] + "** in box **" + ids[i] + "** is rotting!";
-          NtfyNotify("warning,skull,biohazard", "Item Rotting!", msg.c_str(), "urgent");
-        }
-        break;
-      case 4:
-        {
-          String msg = String("Sensor error for box **") + ids[i] + "**.";
-          NtfyNotify("warning,x", "Sensor Error", msg.c_str(), "default");
-        }
-        break;
-      default:
-        break;
-    }
+    in_file.close();
+    return;
   }
+
+  char line_buffer[BUFFER_LIMIT];
+  uint32_t now = (uint32_t)time(nullptr);
+
+  while (in_file.available())
+  {
+    size_t len = in_file.readBytesUntil('\n', line_buffer, sizeof(line_buffer) - 1);
+    line_buffer[len] = '\0';
+
+    while (len > 0 && (line_buffer[len - 1] == '\n' || line_buffer[len - 1] == '\r'))
+      line_buffer[--len] = '\0';
+
+    char *cols[8];
+    char *token = strtok(line_buffer, ",");
+    int i = 0;
+
+    while (token && i < 8)
+    {
+      cols[i++] = token;
+      token = strtok(NULL, ",");
+    }
+
+    if (i < 8)
+      continue;
+
+    uint8_t notified = (uint8_t)atoi(cols[0]);
+    const char *box_index = cols[1];
+    const char *item_name = cols[2];
+    uint32_t reg_date = (uint32_t)atol(cols[3]);
+    uint32_t expiry = (uint32_t)atol(cols[4]);
+    bool physical = atoi(cols[5]) != 0;
+    FoodCondition stored_condition = (FoodCondition)atoi(cols[6]);
+    const char *preset = cols[7];
+
+    FoodCondition time_condition = FRESH;
+
+    if (expiry <= now)
+    {
+      time_condition = EXPIRED;
+    }
+    else if (expiry > reg_date && now >= reg_date && now <= expiry)
+    {
+      uint32_t total_life = expiry - reg_date;
+      uint32_t remaining_life = expiry - now;
+
+      if (total_life > 0)
+      {
+        uint32_t percent_remaining = (uint32_t)(((uint64_t)remaining_life * 100ULL) / (uint64_t)total_life);
+
+        if (percent_remaining <= 30)
+          time_condition = GOING_BAD;
+      }
+    }
+
+    FoodCondition final_condition = WorseCondition(stored_condition, time_condition);
+
+    if (final_condition > stored_condition)
+      notified = 0;
+
+    if (notified == 0 && final_condition != UNKNOWN && final_condition != FRESH)
+    {
+      switch (final_condition)
+      {
+        case GOING_BAD:
+          {
+            String msg = String("*") + item_name + "* in box *" + box_index + "* is going bad.";
+            NtfyNotify("warning", "Item Going Bad", msg.c_str(), "high");
+            notified = 1;
+          }
+          break;
+
+        case EXPIRED:
+          {
+            String msg = String("*") + item_name + "* in box *" + box_index + "* has expired!";
+            NtfyNotify("warning,skull", "Item Expired!", msg.c_str(), "urgent");
+            notified = 1;
+          }
+          break;
+
+        default:
+          break;
+      }
+    }
+
+    out_file.print(notified);
+    out_file.print(',');
+    out_file.print(box_index);
+    out_file.print(',');
+    out_file.print(item_name);
+    out_file.print(',');
+    out_file.print(reg_date);
+    out_file.print(',');
+    out_file.print(expiry);
+    out_file.print(',');
+    out_file.print(physical ? 1 : 0);
+    out_file.print(',');
+    out_file.print((uint8_t)final_condition);
+    out_file.print(',');
+    out_file.println(preset);
+  }
+
+  in_file.close();
+  out_file.close();
+
+  SD.remove(INVENTORY_FILE);
+  SD.rename(INVENTORY_FILE_TEMP, INVENTORY_FILE);
 }

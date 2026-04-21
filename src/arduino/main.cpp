@@ -10,23 +10,6 @@
 unsigned long last_poll = 0;
 unsigned long last_refresh = 0;
 
-enum Pins
-{
-  FRESH_PIN = 2,
-  GOING_BAD_PIN = 3,
-  EXPIRED_PIN = 4,
-  ALC_SENSOR_PIN = A0,
-  CH3_SENSOR_PIN = A1
-};
-
-enum ThresholdPins // Current Testing Values
-{
-  ALC_THRESHOLD_BAD = 160,
-  ALC_THRESHOLD_EXP = 500,
-  CH3_THRESHOLD_BAD = 400,
-  CH3_THRESHOLD_EXP = 600
-};
-
 unsigned long time = 0;
 // const int SENSOR_READ_DELAY = 100;
 
@@ -39,7 +22,15 @@ SoftwareSerial nodemcu(5, 6);
 
 void setup()
 {
-  Serial.begin(9600);
+  d_SerialBegin(9600);
+
+  RadioSetup();
+
+  for (int pins : status_pins)
+    pinMode(pins, OUTPUT);
+
+  pinMode(Pins::ALC_SENSOR_PIN, INPUT);
+  pinMode(Pins::CH3_SENSOR_PIN, INPUT);
 
   for (int pins : status_pins)
     digitalWrite(pins, HIGH);
@@ -51,25 +42,19 @@ void setup()
 
   d_SerialPrintln("SFES Main Indicator Init'sed");
 
-  for (int pins : status_pins)
-    pinMode(pins, OUTPUT);
-
-  pinMode(Pins::ALC_SENSOR_PIN, INPUT);
-  pinMode(Pins::CH3_SENSOR_PIN, INPUT);
-
-  delay(10000);
-
   nodemcu.begin(9600);
-  RadioSetup();
 
-  String response = "";
-  while (!strcmp(response.c_str(), ""))
+  char response[120];
+
+  d_SerialPrintln("Entering Setup...");
+  if (NodeMCUTransmit(Requests::ActiveBoxes, &nodemcu, NULL, response, sizeof(response)))
   {
-    d_SerialPrint("Asking for file...");
-    response = NodeMCUTransmit(Requests::ActiveBoxes, &nodemcu);
-    delay(50);
+    d_SerialPrint("Receieved input:");
+    d_SerialPrintlnV(response);
+    ParseBoxes(response);
   }
-  ParseBoxes(response);
+  else
+    d_SerialPrintln("Failed to get active boxes");
 }
 
 void loop()
@@ -78,32 +63,24 @@ void loop()
 
   if (now - last_poll >= POLL_INTERVAL_MS)
   {
+    d_SerialPrintln("Polling...");
     last_poll = now;
     Poller();
-    NodeMCUSender(&nodemcu);
+    NodeMcuUpdate(&nodemcu);
   }
   if (now - last_refresh >= REFRESH_INT_MS)
   {
+    d_SerialPrintln("Refreshing...");
     last_refresh = now;
-    String response = NodeMCUTransmit(Requests::ActiveBoxes, &nodemcu);
-    ParseBoxes(response);
+    char response[120];
+
+    if (NodeMCUTransmit(Requests::ActiveBoxes, &nodemcu, NULL, response, sizeof(response)))
+    {
+      d_SerialPrint("Receieved input:");
+      d_SerialPrintlnV(response);
+      ParseBoxes(response);
+    }
+    else
+      d_SerialPrintln("Failed to get active boxes");
   }
-}
-
-void UpdateLocalReadings()
-{
-  int alc_reading = analogRead(Pins::ALC_SENSOR_PIN);
-  int ch3_reading = analogRead(Pins::CH3_SENSOR_PIN);
-
-  d_SerialPrint("Sensor Readings:\nAlcohol Readings:");
-  d_SerialPrintV(alc_reading);
-  d_SerialPrint("| CH3 Readings: ");
-  d_SerialPrintV(alc_reading);
-
-  if (alc_reading >= ThresholdPins::ALC_THRESHOLD_EXP || ch3_reading >= CH3_THRESHOLD_EXP)
-    digitalWrite(Pins::EXPIRED_PIN, HIGH);
-  else if (alc_reading >= ThresholdPins::ALC_THRESHOLD_BAD || ch3_reading >= CH3_THRESHOLD_BAD)
-    digitalWrite(Pins::GOING_BAD_PIN, HIGH);
-  else
-    digitalWrite(Pins::FRESH_PIN, HIGH);
 }

@@ -1,5 +1,6 @@
 #include "NtfyNotifier.h"
 
+#include "CsvOperations.h"
 #include "ESP8266HTTPClient.h"
 #include "IPAddress.h"
 #include "WString.h"
@@ -37,4 +38,26 @@ void NtfyNotify(const char *tags, const char *title, const char *message, const 
 
   http.end();
   yield();
+}
+
+void NotifyItemAdded(const InventoryRecordLine *record)
+{
+  String msg = String("**") + record->item_name + "** has been added to box **" + record->box_id + "**.";
+  NtfyNotify("white_check_mark,package", "Item Added", msg.c_str(), "default");
+}
+
+void NotifyItemDeleted(const char *box_id)
+{
+  String msg = String("Item in box **") + box_id + "** has been deleted from inventory.";
+  NtfyNotify("wastebasket", "Item Deleted", msg.c_str(), "default");
+}
+
+void BootNotify()
+{
+  time_t now = time(nullptr);
+  struct tm *t = localtime(&now);
+  char time_str[32];
+  strftime(time_str, sizeof(time_str), "%d/%m/%Y %H:%M:%S", t);
+  String msg = String("System booted successfully at **") + time_str + "**. Ready to monitor inventory.";
+  NtfyNotify("white_check_mark,rocket", "System Ready", msg.c_str(), "default");
 }

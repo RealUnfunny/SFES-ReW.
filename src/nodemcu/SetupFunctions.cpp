@@ -1,5 +1,9 @@
 #include "SetupFunctions.h"
 
+#include "CSV_Parser.h"
+#include "SoftwareSerial.h"
+#include "Updater.h"
+#include "nodemcu/CsvOperations.h"
 #include "nodemcu/NtfyNotifier.h"
 #include "wl_definitions.h"
 #include <Arduino.h>
@@ -70,7 +74,7 @@ void NTPSetup()
   time_t epochTime = time_client.getEpochTime();
   timeval tv = {epochTime, 0};
   settimeofday(&tv, nullptr);
-  d_SerialPrintf("Current Unix time: %lu\n", time(nullptr));
+  d_SerialPrintf("Current Unix time: %lld\n", time(nullptr));
 }
 
 void NTFYSetup()
@@ -100,24 +104,87 @@ void SDSetup()
   if (!SD.exists(INVENTORY_FILE))
   {
     d_SerialPrintln("File not found! Creating...");
-    File f = SD.open(INVENTORY_FILE, FILE_WRITE);
-    if (!f)
-      return;
-    f.println("serial_no,box_id,item_name,reg_date,expiry_date,physical");
-    f.close();
+    if (File f = SD.open(INVENTORY_FILE, FILE_WRITE))
+    {
+      f.println(""); // Since we're ditching headers now.
+      f.close();
+    }
     d_SerialPrintln("File Created.");
   }
   else
     d_SerialPrintln("File Exists. Continuing...");
+
+  if (SD.exists(INVENTORY_FILE_TEMP))
+    SD.remove(INVENTORY_FILE_TEMP);
 }
 
-void BootNotify()
+void MessageHandler(SoftwareSerial *serial)
 {
-  time_t now = time(nullptr);
-  struct tm *t = localtime(&now);
-  char time_str[32];
-  strftime(time_str, sizeof(time_str), "%d/%m/%Y %H:%M:%S", t);
+  static char buffer[128];
+  static size_t idx = 0;
 
-  String msg = String("System booted successfully at **") + time_str + "**. Ready to monitor inventory.";
-  NtfyNotify("white_check_mark,rocket", "System Ready", msg.c_str(), "default");
+  static bool waiting_for_csv = false;
+  static unsigned long last_byte_time = 0;
+
+  while (serial->available())
+  {
+    char c = serial->read();
+    last_byte_time = millis();
+
+    if (c == MSG_TERMINATOR)
+    {
+      if (idx == 0)
+      {
+        idx = 0;
+        continue;
+      }
+
+      buffer[idx] = '\0';
+
+      d_SerialPrint("RX: ");
+      d_SerialPrintln(buffer);
+
+      if (waiting_for_csv)
+      {
+        UpdateCSV(buffer);
+        waiting_for_csv = false;
+      }
+      else if (strcmp(buffer, ReqActBox) == 0)
+      {
+        d_SerialPrintln("RAB received");
+        WritePhysicals(serial);
+      }
+      else if (strcmp(buffer, UpdBoxes) == 0)
+      {
+        d_SerialPrintln("UPD received, sending OK");
+
+        serial->print("OK");
+        serial->print(MSG_TERMINATOR);
+
+        waiting_for_csv = true;
+      }
+      else
+      {
+        d_SerialPrintln("Unknown message");
+      }
+
+      idx = 0; // reset buffer
+    }
+    else
+    {
+      if (idx < sizeof(buffer) - 1)
+      {
+        buffer[idx++] = c;
+      }
+      else
+      {
+        idx = 0;
+      }
+    }
+  }
+
+  if (idx > 0 && millis() - last_byte_time > 200)
+  {
+    idx = 0;
+  }
 }

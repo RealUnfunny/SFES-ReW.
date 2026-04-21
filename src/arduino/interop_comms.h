@@ -3,4 +3,5 @@
 
 #include ".common/comm.h"
 
-String NodeMCUTransmit(Requests request, SoftwareSerial *sender);
+bool NodeMCUTransmit(Requests request, SoftwareSerial *serial, const char *payload, char *out_buffer,
+                     size_t buffer_size);
