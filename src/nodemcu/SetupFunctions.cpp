@@ -122,22 +122,18 @@ void MessageHandler(SoftwareSerial *serial)
 {
   static char buffer[128];
   static size_t idx = 0;
-
   static bool waiting_for_csv = false;
   static unsigned long last_byte_time = 0;
 
   while (serial->available())
   {
-    char c = serial->read();
+    const char c = serial->read();
     last_byte_time = millis();
 
     if (c == MSG_TERMINATOR)
     {
       if (idx == 0)
-      {
-        idx = 0;
         continue;
-      }
 
       buffer[idx] = '\0';
 
@@ -157,34 +153,54 @@ void MessageHandler(SoftwareSerial *serial)
       else if (strcmp(buffer, UpdBoxes) == 0)
       {
         d_SerialPrintln("UPD received, sending OK");
-
         serial->print("OK");
         serial->print(MSG_TERMINATOR);
-
         waiting_for_csv = true;
+      }
+      else if (strcmp(buffer, "IVC") == 0)
+      {
+        d_SerialPrintln("IVC received");
+
+        uint16_t count = InventoryCount();
+        serial->print("IVC,");
+        serial->print(count);
+        serial->print(MSG_TERMINATOR);
+
+        d_SerialPrint("IVC Sent back: IVC,");
+        d_SerialPrintln(count);
+      }
+      else if (strncmp(buffer, "IVW,", 4) == 0)
+      {
+        d_SerialPrintln("IVW received");
+
+        char *save = nullptr;
+        char *start_tok = strtok_r(buffer + 4, ",", &save);
+        char *rows_tok = strtok_r(nullptr, ",", &save);
+
+        uint16_t start = start_tok ? (uint16_t)atoi(start_tok) : 0;
+        uint8_t rows = rows_tok ? (uint8_t)atoi(rows_tok) : 2;
+
+        if (rows == 0)
+          rows = 2;
+
+        WriteInventoryWindow(serial, start, rows);
       }
       else
       {
         d_SerialPrintln("Unknown message");
       }
 
-      idx = 0; // reset buffer
+      idx = 0;
     }
     else
     {
       if (idx < sizeof(buffer) - 1)
-      {
         buffer[idx++] = c;
-      }
       else
-      {
         idx = 0;
-      }
     }
   }
 
   if (idx > 0 && millis() - last_byte_time > 200)
-  {
     idx = 0;
-  }
 }

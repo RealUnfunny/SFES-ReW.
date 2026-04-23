@@ -47,7 +47,7 @@ FoodCondition CurrentCondition = UNKNOWN;
 void evaluateCondition()
 {
   int alc_reading = analogRead(Pins::ALC_SENSOR_PIN);
-  int ch3_reading = analogRead(Pins::CH3_SENSOR_PIN);
+  int ch3_reading = 0;
 
   d_SerialPrint("Alcohol Values:");
   d_SerialPrintlnV(alc_reading);
@@ -59,6 +59,7 @@ void evaluateCondition()
     digitalWrite(Pins::EXPIRED_PIN, HIGH);
     digitalWrite(Pins::FRESH_PIN, LOW);
     digitalWrite(Pins::GOING_BAD_PIN, LOW);
+    d_SerialPrintV(thresholds.alc_exp);
     CurrentCondition = FoodCondition::EXPIRED;
   }
   else if (alc_reading >= thresholds.alc_bad || ch3_reading >= thresholds.ch3_bad)
@@ -81,16 +82,12 @@ void setup()
 {
   Serial.begin(9600);
 
-  pinMode(A5, INPUT);
-  pinMode(A6, INPUT);
+  pinMode(Pins::ALC_SENSOR_PIN, INPUT);
+  pinMode(Pins::CH3_SENSOR_PIN, INPUT);
 
-  pinMode(8, OUTPUT); // Fresh Pin
-  pinMode(7, OUTPUT); // Going Bad
-  pinMode(6, OUTPUT); // Expired
-
-  // digitalWrite(8, HIGH); // Fresh Pin
-  // digitalWrite(7, HIGH); // Going Bad
-  // digitalWrite(6, HIGH); // Expired
+  pinMode(Pins::FRESH_PIN, OUTPUT);     // Fresh Pin
+  pinMode(Pins::EXPIRED_PIN, OUTPUT);   // Going Bad
+  pinMode(Pins::GOING_BAD_PIN, OUTPUT); // Expired
 
   radio.begin();
   radio.setPALevel(RF24_PA_LOW);
@@ -110,6 +107,8 @@ void setup()
 
 void loop()
 {
+  evaluateCondition();
+
   if (!radio.available())
     return;
 
@@ -127,7 +126,9 @@ void loop()
     return;
   }
 
-  thresholds = profile_table[flags];
+  d_SerialPrintlnV("Flags");
+  d_SerialPrintlnV(flags);
+  thresholds = profile_table[1];
   evaluateCondition();
 
   if (type != PKT_REQUEST)
@@ -141,7 +142,6 @@ void loop()
 
   radio.stopListening();
   radio.openWritingPipe(MAIN_ADDRESS);
-
   delayMicroseconds(150);
 
   bool ok = radio.write(&resp, sizeof(resp));

@@ -8,6 +8,9 @@
 #define MSG_TERMINATOR '^'
 #define ReqActBox "RAB"
 #define UpdBoxes "UPD"
+#define ReqInvCount "IVC"
+#define ReqInvWin "IVW"
+
 #define INVENTORY_FILE "/inventory.csv"
 
 #define DEBUG_MODE

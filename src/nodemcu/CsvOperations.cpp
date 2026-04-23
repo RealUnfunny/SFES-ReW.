@@ -20,6 +20,9 @@ File copy_file;
 
 inline void InventoryInit()
 {
+  if (read_file)
+    read_file.close();
+
   if ((read_file = SD.open(INVENTORY_FILE, FILE_READ)))
     d_SerialPrintln("File Exists.");
   else
@@ -438,4 +441,148 @@ void CheckAndNotify()
 
   SD.remove(INVENTORY_FILE);
   SD.rename(INVENTORY_FILE_TEMP, INVENTORY_FILE);
+}
+
+uint16_t InventoryCount()
+{
+  d_SerialPrintln("InventoryCount: begin");
+
+  InventoryInit();
+
+  if (!read_file)
+  {
+    d_SerialPrintln("InventoryCount: read_file invalid");
+    return 0;
+  }
+
+  uint16_t count = 0;
+  bool has_data = false;
+
+  while (read_file.available())
+  {
+    char c = read_file.read();
+
+    if (c != '\n' && c != '\r')
+      has_data = true;
+
+    if ((c == '\n' || c == '\r') && has_data)
+    {
+      count++;
+      has_data = false;
+
+      if (c == '\r' && read_file.available())
+      {
+        char next = read_file.peek();
+        if (next == '\n')
+          read_file.read();
+      }
+    }
+  }
+
+  if (has_data)
+    count++;
+
+  read_file.close();
+
+  d_SerialPrint("InventoryCount: final count = ");
+  d_SerialPrintln(count);
+
+  return count;
+}
+
+void WriteInventoryWindow(SoftwareSerial *sender, uint16_t start, uint8_t rows)
+{
+  InventoryInit();
+  if (!read_file)
+  {
+    sender->print("IVW,");
+    sender->print(MSG_TERMINATOR);
+    return;
+  }
+
+  sender->print("IVW,");
+
+  char field[40];
+  uint8_t field_idx = 0;
+  uint8_t col = 0;
+
+  char item_name[32] = {0};
+  char box_id[16] = {0};
+  char condition[8] = "3";
+
+  uint16_t row_index = 0;
+  uint8_t sent = 0;
+  bool first_row = true;
+
+  while (read_file.available() && sent < rows)
+  {
+    char c = read_file.read();
+
+    if (c == ',' || c == '\n' || c == '\r')
+    {
+      field[field_idx] = '\0';
+
+      if (col == 1)
+      {
+        strncpy(box_id, field, sizeof(box_id) - 1);
+        box_id[sizeof(box_id) - 1] = '\0';
+      }
+      else if (col == 2)
+      {
+        strncpy(item_name, field, sizeof(item_name) - 1);
+        item_name[sizeof(item_name) - 1] = '\0';
+      }
+      else if (col == 6)
+      {
+        strncpy(condition, field, sizeof(condition) - 1);
+        condition[sizeof(condition) - 1] = '\0';
+      }
+
+      field_idx = 0;
+      col++;
+
+      if (c == '\n' || c == '\r')
+      {
+        if (col > 1)
+        {
+          if (row_index >= start)
+          {
+            if (!first_row)
+              sender->print('\n');
+
+            sender->print(item_name);
+            sender->print('|');
+            sender->print(condition);
+            sender->print('|');
+            sender->print(box_id);
+
+            first_row = false;
+            sent++;
+          }
+
+          row_index++;
+        }
+
+        col = 0;
+        item_name[0] = '\0';
+        box_id[0] = '\0';
+        strcpy(condition, "3");
+
+        if (c == '\r' && read_file.available())
+        {
+          char next = read_file.peek();
+          if (next == '\n')
+            read_file.read();
+        }
+      }
+    }
+    else
+    {
+      if (field_idx < sizeof(field) - 1)
+        field[field_idx++] = c;
+    }
+  }
+
+  read_file.close();
+  sender->print(MSG_TERMINATOR);
 }

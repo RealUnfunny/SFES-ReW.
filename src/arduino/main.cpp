@@ -1,6 +1,7 @@
 #define POLL_INTERVAL_MS 5000
 #define REFRESH_INT_MS 30000
 
+#include "LcdScreen.h"
 #include "box_actions.h"
 #include "interop_comms.h"
 #include <.common/comm.h>
@@ -35,7 +36,7 @@ void setup()
   for (int pins : status_pins)
     digitalWrite(pins, HIGH);
 
-  delay(1000); // Arbitrary
+  delay(1000);
 
   for (int pins : status_pins)
     digitalWrite(pins, LOW);
@@ -54,7 +55,11 @@ void setup()
     ParseBoxes(response);
   }
   else
+  {
     d_SerialPrintln("Failed to get active boxes");
+  }
+
+  UiSetup(&nodemcu);
 }
 
 void loop()

@@ -38,3 +38,6 @@ void DeleteRecord(const char *target_box_id);
 void CleanCSV();
 void UpdateCSV(const char *csv_input);
 void CheckAndNotify();
+
+uint16_t InventoryCount();
+void WriteInventoryWindow(SoftwareSerial *sender, uint16_t start, uint8_t count);
