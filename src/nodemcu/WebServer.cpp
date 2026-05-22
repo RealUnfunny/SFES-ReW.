@@ -15,7 +15,6 @@ void WebSetup(ESP8266WebServer *server)
     d_SerialPrintln("mDNS responder start!");
   else
     d_SerialPrintln("mDNS startup failed!");
-  // tim
 
   server->on("/", HTTP_GET, [server]() { handleRoot(server); });
   server->on("/inventory", HTTP_GET, [server]() { handleGetInventory(server); });

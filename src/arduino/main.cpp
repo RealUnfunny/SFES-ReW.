@@ -27,19 +27,24 @@ void setup()
 
   RadioSetup();
 
-  for (int pins : status_pins)
-    pinMode(pins, OUTPUT);
+  pinMode(Pins::FRESH_PIN, OUTPUT);
+  pinMode(Pins::GOING_BAD_PIN, OUTPUT);
+  pinMode(Pins::EXPIRED_PIN, OUTPUT);
 
   pinMode(Pins::ALC_SENSOR_PIN, INPUT);
   pinMode(Pins::CH3_SENSOR_PIN, INPUT);
 
-  for (int pins : status_pins)
-    digitalWrite(pins, HIGH);
-
+  digitalWrite(Pins::FRESH_PIN, HIGH);
   delay(1000);
-
-  for (int pins : status_pins)
-    digitalWrite(pins, LOW);
+  digitalWrite(Pins::FRESH_PIN, LOW);
+  delay(1000);
+  digitalWrite(Pins::GOING_BAD_PIN, HIGH);
+  delay(1000);
+  digitalWrite(Pins::GOING_BAD_PIN, LOW);
+  delay(1000);
+  digitalWrite(Pins::EXPIRED_PIN, HIGH);
+  delay(1000);
+  digitalWrite(Pins::EXPIRED_PIN, LOW);
 
   d_SerialPrintln("SFES Main Indicator Init'sed");
 
@@ -47,7 +52,7 @@ void setup()
 
   char response[120];
 
-  d_SerialPrintln("Entering Setup...");
+  d_SerialPrintln("Entering Setup, sending Active Boxes request.");
   if (NodeMCUTransmit(Requests::ActiveBoxes, &nodemcu, NULL, response, sizeof(response)))
   {
     d_SerialPrint("Receieved input:");

@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>That Inventory Manager</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      @keyframes globalFade { from { opacity: 0; } to { opacity: 1; } }
+      body {
+        font-family: sans-serif; background: #1a202c; color: #e2e8f0;
+        min-height: 100vh; overflow: hidden; animation: globalFade 1.5s;
+      }
+      #bg-canvas {
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        z-index: -1; background: #1a202c;
+      }
+      .container {
+        max-width: 900px; margin: 0 auto; height: 100vh;
+        display: flex; flex-direction: column; justify-content: center;
+        padding: 0 40px 100px 40px;
+      }
+      .tab-content { display: none; text-align: center; }
+      .tab-content.active { display: block; animation: globalFade 0.6s; }
+      h1 { font-size: 42px; font-weight: 800; margin-bottom: 60px; }
+      label {
+        font-size: 18px; color: #a0aec0; display: block;
+        margin-bottom: 12px; text-align: left;
+      }
+      input::-webkit-outer-spin-button,
+      input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+      input[type=number] { -moz-appearance: textfield; }
+      input, select {
+        width: 100%; padding: 22px; background: rgba(61, 79, 104, 0.5);
+        border: none; color: #e2e8f0; font-size: 22px; outline: none;
+      }
+      .row { display: flex; gap: 30px; margin-bottom: 35px; }
+      .row > div { flex: 1; }
+      .box-id-row, .ctrl-wrap {
+        display: flex; background: rgba(61, 79, 104, 0.5);
+        border: 1px solid rgba(255,255,255,0.1); border-radius: 18px;
+        overflow: hidden;
+      }
+      .ctrl-wrap input, .box-id-row select { background: transparent; flex: 1; }
+      .ctrl-btn {
+        background: transparent; border: none; color: white; font-size: 32px;
+        padding: 0 25px; cursor: pointer; transition: background 0.2s;
+        display: flex; align-items: center; justify-content: center;
+      }
+      .ctrl-btn span { transition: color 0.2s; pointer-events: none; }
+      .ctrl-btn:hover { background: rgba(255,255,255,0.1); }
+      .flash-plus { color: #68d391 !important; }
+      .flash-minus { color: #fc8181 !important; }
+      button.submit {
+        width: 100%; padding: 26px; background: #e2e8f0; color: #1a202c;
+        border: none; border-radius: 60px; font-size: 22px; font-weight: 900;
+        cursor: pointer; margin-top: 30px;
+      }
+      .nav-bar {
+        position: fixed; bottom: 0; left: 0; width: 100%; padding: 45px;
+        background: rgba(26, 32, 44, 0.85); text-align: center;
+        border-top: 1px solid rgba(255,255,255,0.05); z-index: 10;
+      }
+      .nav-item {
+        color: #4a5568; margin: 0 35px; cursor: pointer;
+        font-family: monospace; font-size: 24px;
+      }
+      .nav-item.active { color: #e2e8f0; font-weight: bold; }
+      table { width: 100%; font-size: 18px; border-collapse: collapse; }
+      th { color: #a0aec0; padding: 18px; border-bottom: 2px solid #4a5568; text-align: left; }
+      td { padding: 20px; border-bottom: 1px solid rgba(61, 79, 104, 0.4); text-align: left; }
+      .trash-btn { cursor: pointer; background: none; border: none; font-size: 20px; }
+      .cond-0 { color: #68d391; } .cond-1 { color: #f6ad55; }
+      .cond-2 { color: #fc8181; } .cond-3 { color: #a0aec0; }
+    </style>
+  </head>
+  <body>
+    <canvas id="bg-canvas"></canvas>
+    <div class="container">
+      <div id="tab-add" class="tab-content active">
+        <h1>That Inventory Manager</h1>
+        <div class="row">
+          <div><label>Item Name</label><input type="text" id="item" 
+            style="border-radius:18px; border:1px solid rgba(255,255,255,0.1)"></div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Box ID</label>
+            <div class="box-id-row">
+              <select id="box_letter" onwheel="handleWheelL(event)"></select>
+              <select id="box_number" onwheel="handleWheelN(event)"></select>
+            </div>
+          </div>
+          <div>
+            <label>Shelf Life</label>
+            <div class="ctrl-wrap" onwheel="handleWheel(event, 'shelf')">
+              <input type="number" id="shelf" value="7" style="text-align:center" oninput="updateExpiry()">
+              <button class="ctrl-btn" onclick="manualAdj('shelf', -1)"><span>-</span></button>
+              <button class="ctrl-btn" onclick="manualAdj('shelf', 1)"><span>+</span></button>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Quantity</label>
+            <div class="ctrl-wrap" onwheel="handleWheel(event, 'qty')">
+              <input type="number" id="qty" value="1" style="text-align:center">
+              <button class="ctrl-btn" onclick="manualAdj('qty', -1)"><span>-</span></button>
+              <button class="ctrl-btn" onclick="manualAdj('qty', 1)"><span>+</span></button>
+            </div>
+          </div>
+          <div><label>Expiry Date</label><input type="date" id="expiry" 
+            style="border-radius:18px; border:1px solid rgba(255,255,255,0.1)"></div>
+        </div>
+        <button class="submit" onclick="addItem()">LOG NEW ITEM</button>
+      </div>
+
+      <div id="tab-list" class="tab-content">
+        <h1>Current Inventory</h1>
+        <div style="max-height: 60vh; overflow-y: auto;">
+          <table>
+            <thead><tr><th>Box</th><th>Item</th><th>Registered</th><th>Expiry</th><th>Status</th><th></th></tr></thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav-bar">
+      <span class="nav-item active" onclick="showTab('add', this)">[ LOG ITEM ]</span>
+      <span class="nav-item" onclick="showTab('list', this)">[ INVENTORY ]</span>
+    </div>
+
+    <script>
+      const canvas = document.getElementById("bg-canvas");
+      const ctx = canvas.getContext("2d");
+      let offset = 0, inventory = [];
+      const text = "THATINVENTORYMANAGER";
+      const conditions = { "0": "Fresh", "1": "Going Bad", "2": "Rotting", "3": "Unknown" };
+
+      const bl = document.getElementById("box_letter");
+      const bn = document.getElementById("box_number");
+      for (let i = 65; i <= 90; i++) bl.add(new Option(String.fromCharCode(i)));
+      for (let i = 0; i <= 9; i++) bn.add(new Option(i));
+
+      function showTab(t, el) {
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        document.getElementById('tab-' + t).classList.add('active');
+        el.classList.add('active');
+        if (t === 'list') load();
+      }
+
+      async function load() {
+        try {
+          const r = await fetch("/inventory");
+          const t = await r.text();
+          inventory = t.trim().split("\n").filter(l => l).map(l => l.split(","));
+          renderList();
+        } catch(e) {}
+      }
+
+      function renderList() {
+        document.getElementById("tbody").innerHTML = inventory.map(r => {
+          const regDate = new Date(r[3] * 1000).toLocaleDateString();
+          const expDate = new Date(r[4] * 1000).toLocaleDateString();
+          const condKey = r[6]?.trim() || "3";
+          return `
+          <tr>
+            <td>${r[1]}</td>
+            <td>${r[2]}</td>
+            <td>${regDate}</td>
+            <td>${expDate}</td>
+            <td class="cond-${condKey}">${conditions[condKey]}</td>
+            <td style="text-align:right"><button class="trash-btn" onclick="delItem('${r[1]}')">🗑️</button></td>
+          </tr>`;
+        }).join("");
+      }
+
+      async function delItem(box_id) {
+        if (!confirm(`Remove Box ${box_id}?`)) return;
+        await fetch("/delete", { method: "POST", body: new URLSearchParams({ box_id }) });
+        load();
+      }
+
+      async function addItem() {
+        const box_id =
+          document.getElementById("box_letter").value +
+          document.getElementById("box_number").value;
+
+        // GUARD: Check if Box ID already exists in the current inventory
+        const isDuplicate = inventory.some(row => row[1] === box_id);
+        if (isDuplicate) {
+          alert(`Error: Box ${box_id} is already in use. Please delete the existing entry first.`);
+          return;
+        }
+
+        const item = document.getElementById("item").value;
+        if (!item) {
+          alert("Please enter an item name.");
+          return;
+        }
+
+        const expiry = Math.floor(
+          new Date(document.getElementById("expiry").value).getTime() / 1000,
+        );
+        const physical = box_id === "A0" || box_id === "A1" ? "1" : "0";
+
+        await fetch("/add", {
+          method: "POST",
+          body: new URLSearchParams({
+            box_id,
+            item: item,
+            expiry,
+            physical,
+            quantity: document.getElementById("qty").value
+          }),
+        });
+
+        document.getElementById("item").value = "";
+        showTab('list', document.querySelectorAll('.nav-item')[1]);
+      }
+
+      function updateExpiry() {
+        const days = parseInt(document.getElementById("shelf").value) || 0;
+        const d = new Date(); d.setDate(d.getDate() + days);
+        document.getElementById("expiry").value = d.toISOString().split("T")[0];
+      }
+
+      function triggerFeedback(id, direction) {
+        const wrap = document.getElementById(id).parentElement;
+        const btnIdx = direction > 0 ? 2 : 1; 
+        const span = wrap.querySelector(`button:nth-child(${btnIdx + 1}) span`);
+        const cls = direction > 0 ? 'flash-plus' : 'flash-minus';
+        if (span) {
+          span.classList.add(cls);
+          setTimeout(() => span.classList.remove(cls), 300);
+        }
+      }
+
+      function manualAdj(id, d) {
+        const el = document.getElementById(id);
+        el.value = Math.max(1, parseInt(el.value) + d);
+        triggerFeedback(id, d);
+        if (id === 'shelf') updateExpiry();
+      }
+
+      function handleWheel(event, id) {
+        event.preventDefault();
+        const direction = event.deltaY < 0 ? 1 : -1;
+        const el = document.getElementById(id);
+        el.value = Math.max(1, parseInt(el.value) + direction);
+        triggerFeedback(id, direction);
+        if (id === 'shelf') updateExpiry();
+      }
+
+      function handleWheelL(event) {
+        event.preventDefault();
+        const step = event.deltaY < 0 ? -1 : 1;
+        let next = bl.selectedIndex + step;
+        if (next < 0) next = 25; if (next > 25) next = 0;
+        bl.selectedIndex = next;
+      }
+
+      function handleWheelN(event) {
+        event.preventDefault();
+        const step = event.deltaY < 0 ? -1 : 1;
+        bn.selectedIndex = Math.max(0, Math.min(9, bn.selectedIndex + step));
+      }
+
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        offset += 0.5; ctx.font = "32px monospace";
+        ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
+        const xPos = canvas.width * 0.15, spacing = 34;
+        for (let y = -spacing; y < canvas.height + spacing; y += spacing) {
+          let yPos = (y + offset) % (canvas.height + spacing);
+          let idx = Math.floor(Math.abs(y) / spacing) % text.length;
+          ctx.fillText(text[idx], xPos, yPos);
+        }
+        requestAnimationFrame(draw);
+      }
+
+      window.addEventListener("resize", () => {
+        canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+      });
+      window.dispatchEvent(new Event('resize'));
+      updateExpiry(); draw();
+    </script>
+  </body>
+</html>

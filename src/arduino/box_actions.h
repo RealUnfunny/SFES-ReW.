@@ -4,6 +4,7 @@
 
 #define MAX_BOXES 2
 #define TIMEOUT_MS 500
+#define TIME_TO_WAIT_FOR_RESPONSE 250
 
 enum Pins
 {

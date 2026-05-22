@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #define MSG_TERMINATOR '^'
+
 #define ReqActBox "RAB"
 #define UpdBoxes "UPD"
 #define ReqInvCount "IVC"
@@ -13,11 +14,15 @@
 
 #define INVENTORY_FILE "/inventory.csv"
 
+#define PROTO_VERSION 0x01
+
+// Debug defines, made such that when debug mode is off (and the system is in
+// production mode) various types of processes strictly for debugging purposes
+// are turned off such that the system can focus on main tasks.
 #define DEBUG_MODE
 
 #ifdef DEBUG_MODE
 
-  #define d_SerialBegin(x) Serial.begin(x)
   #ifdef NODEMCU_FILE
     #define d_SerialPrint(x) Serial.print(x)
     #define d_SerialPrintln(x) Serial.println(x)
@@ -25,9 +30,12 @@
     #define d_SerialPrint(x) Serial.print(F(x))
     #define d_SerialPrintln(x) Serial.println(F(x))
   #endif
+  #define d_SerialBegin(x) Serial.begin(x)
   #define d_SerialPrintV(x) Serial.print(x)     // Print Value
   #define d_SerialPrintlnV(x) Serial.println(x) // Print Value
   #define d_SerialPrintf(...) Serial.printf(__VA_ARGS__)
+  #define d_SerialPrintGroup(...) Serial.print(__VA_ARGS__)
+  #define d_SerialPrintGroupln(...) Serial.println(__VA_ARGS__)
   #define d_delay(x) delay(x)
 
 #else
@@ -38,6 +46,8 @@
   #define d_SerialPrintln(x)
   #define d_SerialPrintlnV(x)
   #define d_SerialPrintf(...)
+  #define d_SerialPrintGroup(...)
+  #define d_SerialPrintGroupln(...)
   #define d_delay(x)
 
 #endif
@@ -51,7 +61,8 @@ enum FoodCondition : uint8_t
   UNKNOWN = 3,
 };
 
-struct threshold_values
+// Struct type to easily pack value types.
+struct ThresholdValues
 {
   uint16_t alc_bad;
   uint16_t alc_exp;
@@ -70,7 +81,7 @@ enum ProfileID : uint8_t
 };
 
 // To turn a sensor 'off', simply set the threshold value to 9999.
-const threshold_values profile_table[] = {
+const ThresholdValues profile_table[] = {
     {9999, 9999, 9999, 9999}, // UNKNOWN
     {180, 320, 9999, 9999},   // FRUIT_FAST
     {220, 380, 9999, 9999},   // FRUIT_MEDIUM
@@ -95,25 +106,12 @@ struct box_t
   uint64_t address;
 };
 
-inline void Addresser(box_t *box)
-{
-  box->address = (0xF0F0F00000LL | (uint64_t)box->index[0]) | ((uint64_t)box->index[1] << 8);
-}
-
 typedef enum
 {
   BoxInfo,
   ActiveBoxes,
   UpdateBoxes
 } Requests;
-
-#define PROTO_VERSION 0x01
-
-enum PacketType : uint8_t
-{
-  PKT_REQUEST = 0,
-  PKT_RESPONSE = 1
-};
 
 struct Packet
 {
@@ -122,14 +120,26 @@ struct Packet
   uint8_t crc;
 };
 
-inline uint8_t MakeHeader(uint8_t type, uint8_t seq)
+enum PacketType : uint8_t
 {
-  return ((PROTO_VERSION & 0x01) << 7) | ((type & 0x03) << 5) | (seq & 0x0F);
+  PKT_REQUEST = 0,
+  PKT_RESPONSE = 1,
+  PKT_CONFIG = 2
+};
+
+inline constexpr uint64_t CalcAddress(const char *index)
+{
+  return (0xF0F0F0F000LL | (uint64_t)index[0]) | ((uint64_t)index[1] << 8);
 }
 
-inline uint8_t MakePayload(FoodCondition cond, bool valid, bool error, uint8_t flags)
+inline uint8_t MakeHeader(uint8_t type, uint8_t sequence)
 {
-  return ((cond & 0x03) << 6) | ((valid ? 1 : 0) << 5) | ((error ? 1 : 0) << 4) | (flags & 0x0F);
+  return ((PROTO_VERSION & 0x01) << 7) | ((type & 0x03) << 5) | (sequence & 0x0F);
+}
+
+inline uint8_t MakePayload(FoodCondition condition, uint8_t additional_data = 0)
+{
+  return ((condition & 0x03) << 6) | (additional_data & 0x3F);
 }
 
 inline uint8_t ComputeCRC(uint8_t header, uint8_t payload)
@@ -137,36 +147,31 @@ inline uint8_t ComputeCRC(uint8_t header, uint8_t payload)
   return header ^ payload;
 }
 
-inline void PackPacket(Packet &pkt, uint8_t type, uint8_t seq, FoodCondition cond, bool valid, bool error,
-                       uint8_t flags)
+// Packs data into a valid 3-byte packet.
+inline void PackPacket(Packet &packet, uint8_t type, uint8_t sequence, FoodCondition condition,
+                       uint8_t additional_data = 0)
 {
-  pkt.header = MakeHeader(type, seq);
-  pkt.payload = MakePayload(cond, valid, error, flags);
-  pkt.crc = ComputeCRC(pkt.header, pkt.payload);
+  packet.header = MakeHeader(type, sequence);
+  packet.payload = MakePayload(condition, additional_data);
+  packet.crc = ComputeCRC(packet.header, packet.payload);
 }
 
-inline bool UnpackPacket(const Packet &pkt, uint8_t &type, uint8_t &seq, FoodCondition &cond, bool &valid, bool &error,
-                         uint8_t &flags)
+// Unpacks incoming packet data.
+inline bool UnpackPacket(const Packet &packet, uint8_t &type, uint8_t &sequence, FoodCondition &condition,
+                         uint8_t &additional_data)
 {
-  if (ComputeCRC(pkt.header, pkt.payload) != pkt.crc)
+  if (ComputeCRC(packet.header, packet.payload) != packet.crc)
     return false;
 
-  uint8_t version = (pkt.header >> 7) & 0x01;
+  uint8_t version = (packet.header >> 7) & 0x01;
   if (version != PROTO_VERSION)
     return false;
 
-  type = (pkt.header >> 5) & 0x03;
-  seq = pkt.header & 0x0F;
+  type = (packet.header >> 5) & 0x03;
+  sequence = packet.header & 0x0F;
 
-  cond = (FoodCondition)((pkt.payload >> 6) & 0x03);
-  valid = ((pkt.payload >> 5) & 0x01) != 0;
-  error = ((pkt.payload >> 4) & 0x01) != 0;
-  flags = pkt.payload & 0x0F;
+  condition = (FoodCondition)((packet.payload >> 6) & 0x03);
+  additional_data = packet.payload & 0x3F;
 
   return true;
-}
-
-inline constexpr uint64_t CalcAddress(const char *index)
-{
-  return (0xF0F0F0F000LL | (uint64_t)index[0]) | ((uint64_t)index[1] << 8);
 }
