@@ -10,7 +10,8 @@ notes/*
 *cache*
 
 # Web UI: source is kept, generated output and installed packages are not
-src/nodemcu/tim/*
+src/nodemcu/tim/node_modules/
+src/nodemcu/tim/dist/
 *.html.gz
 
 test/*
