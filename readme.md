@@ -144,7 +144,7 @@ You need [PlatformIO Core](https://github.com/platformio/platformio-core) - some
 
 3. Configure [sensitive_data.cpp](#configuring-sensitive_datacpp).
 
-4. Set up the web UI. You need [Node.js](https://nodejs.org/) installed (it comes with npm). The UI source lives in `src/nodemcu/tim` (this path is gitignored in the repo), so make sure its contents are present before building. From the repository root:
+4. To set up the web UI, you need [Node.js](https://nodejs.org/) installed (it comes with npm). The UI source lives in `src/nodemcu/tim`. From the repo root:
 
    ```bash
    cd src/nodemcu/tim
@@ -152,9 +152,9 @@ You need [PlatformIO Core](https://github.com/platformio/platformio-core) - some
    node build.mjs       # bundles everything into dist/index.html
    ```
 
-   `build.mjs` inlines the CSS and JS into a single self-contained page. **Copy `dist/index.html` to the *root of the microSD card*** as `index.html`. The separate `dist/app.js`, `dist/styles.css` and `dist/index.html.gz` files are build byproducts which you can safely ignore. `inventory.csv` is created automatically on the card at first boot, or read if it already exists.
+   `build.mjs` should inline the CSS and JS into a single self-contained page. **Copy `dist/index.html` to the *root of the microSD card*** as `index.html`. The separate `dist/app.js`, `dist/styles.css` and `dist/index.html.gz` files are build byproducts which you can safely ignore. `inventory.csv` is created automatically on the card at first boot, or read if it already exists.
 
-   > For your own convenience, it is possible to add on to the NodeMCU's Python extra script (`src/python/py_nodemcu.py`) to automatically build the UI and copy `dist/index.html` to a connected SD card reader on your computer whenever building/flashing the main software. You can ask why I didn't just do this — short answer: I'm lazy.
+   > For your own convenience, it is possible to add on to the NodeMCU's Python extra script (`src/python/py_nodemcu.py`) to automatically build the UI and copy `dist/index.html` to a connected SD card reader on your computer whenever building/flashing the main software. You can ask why I didn't just do this - short answer short is I was lazy, sorgy
 
 5. Set up each remote Nano (if you are using remote units). Each Nano needs its own **2-character box label** so the main unit can identify and poll it (for example `A1`, `B2`). `A0` is reserved for the main/local unit on the Arduino UNO.
 
@@ -269,8 +269,6 @@ There are a couple of things I couldn't implement, for which dead code still exi
 - The website could probably be written by someone who actually knows HTML, JavaScript, and CSS, since by nature it's one file served by this poor internet module. I didn't really research a way to fix this problem.
 - There was a plan to have the inventory manager be hosted on `tim.local` so that it would be easier to type, but I couldn't get the mDNS part figured out, and I think that it would only work if the system was confined to one place, i.e., to one network — which it wasn't, considering it was a college project and... it had to be at college. I could also do it through configuring the DNS settings on my computer, but I ultimately decided that most would want a more seamless scan-and-forget through a QR code of the IP, rather than the former case.
 - One could also add more sensors to the units, such as a nitrogen sensor which may allow for detecting spoilage of meat products. Each food group emits its own gases, which can be picked up by a good sensor, and then probably used to extrapolate a result. Experimentally, this project includes an experimental avocado preset/profile, but avocados are too expensive for me to leave to the crutches of science!
-
-
 
 ## Licensing
 
