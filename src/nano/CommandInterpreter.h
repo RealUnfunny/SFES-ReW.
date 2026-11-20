@@ -1,3 +1,5 @@
+#pragma once
+
 #include ".common/comm.h"
 
 #include <stdint.h>

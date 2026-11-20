@@ -8,5 +8,9 @@ notes/*
 
 *compile_commands*
 *cache*
+
+# Web UI: source is kept, generated output and installed packages are not
 src/nodemcu/tim/*
+*.html.gz
+
 test/*

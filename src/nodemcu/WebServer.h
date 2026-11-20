@@ -1,3 +1,5 @@
+#pragma once
+
 #define NODEMCU_FILE
 
 #include <ESP8266WebServer.h>

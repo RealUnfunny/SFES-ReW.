@@ -23,8 +23,6 @@
 //     -> NTFY_TOPIC
 //     -> pass_list: Array of wifi_pass_t (as defined in .common/comm.h)
 
-#include "SetupFunctions.h"
-
 WiFiUDP ntp_udp;
 NTPClient time_client(ntp_udp, "pool.ntp.org", 0, 0);
 

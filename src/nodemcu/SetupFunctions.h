@@ -9,8 +9,6 @@
  *  @brief Sets Up WiFi and other networking features
  */
 
-#pragma once
-
 #define HTTP_PORT 80
 
 /**

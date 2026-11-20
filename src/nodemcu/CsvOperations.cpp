@@ -313,7 +313,7 @@ void UpdateCSV(const char *csv_input)
   SD.rename(INVENTORY_FILE_TEMP, INVENTORY_FILE);
 }
 
-FoodCondition WorseCondition(FoodCondition a, FoodCondition b)
+static FoodCondition WorseCondition(FoodCondition a, FoodCondition b)
 {
   if (a == UNKNOWN)
     return b;

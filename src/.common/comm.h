@@ -1,8 +1,5 @@
 #pragma once
 
-// Debug Macros, for printing to the Serial Monitor
-// only when 'DEBUG_MODE' is defined
-
 #include <stdint.h>
 
 #define MSG_TERMINATOR '^'
@@ -52,7 +49,7 @@
 
 #endif
 
-// Eponymous.
+// Eponymous
 enum FoodCondition : uint8_t
 {
   FRESH = 0,
@@ -61,7 +58,7 @@ enum FoodCondition : uint8_t
   UNKNOWN = 3,
 };
 
-// Struct type to easily pack value types.
+// Struct type to easily pack value types
 struct ThresholdValues
 {
   uint16_t alc_bad;
@@ -70,6 +67,7 @@ struct ThresholdValues
   uint16_t ch3_exp;
 };
 
+// Categories for the various types of pre-defined food categories
 enum ProfileID : uint8_t
 {
   PROFILE_UNKNOWN = 0,
@@ -97,13 +95,13 @@ typedef struct
   char pass[20];
 } wifi_pass_t;
 
-// Boxes Type
+// Boxes Type (largest members first to keep padding minimal)
 struct box_t
 {
+  uint64_t address;
   char index[3];
   volatile FoodCondition State;
   volatile ProfileID p_id;
-  uint64_t address;
 };
 
 typedef enum
@@ -127,6 +125,8 @@ enum PacketType : uint8_t
   PKT_CONFIG = 2
 };
 
+// Useful one-liners
+// This is a quick way to come up with a unique address for a box of a given address.
 inline constexpr uint64_t CalcAddress(const char *index)
 {
   return (0xF0F0F0F000LL | (uint64_t)index[0]) | ((uint64_t)index[1] << 8);
@@ -147,7 +147,7 @@ inline uint8_t ComputeCRC(uint8_t header, uint8_t payload)
   return header ^ payload;
 }
 
-// Packs data into a valid 3-byte packet.
+// Packs data into a valid 3-byte packet
 inline void PackPacket(Packet &packet, uint8_t type, uint8_t sequence, FoodCondition condition,
                        uint8_t additional_data = 0)
 {

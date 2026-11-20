@@ -34,13 +34,18 @@ inline void PrintAddress(uint64_t addr)
 
 FoodCondition EvalLocal()
 {
-  int alc_reading = analogRead(Pins::ALC_SENSOR_PIN);
+  int alc_reading = analogRead(Pins::ALC_SENSOR_PIN) - 170;
   int ch3_reading = analogRead(Pins::CH3_SENSOR_PIN);
 
-  d_SerialPrint("Alcohol Values: ");
-  d_SerialPrintlnV(alc_reading);
-  d_SerialPrint("CH3 Values : ");
-  d_SerialPrintlnV(ch3_reading);
+  // d_SerialPrint("Measured Alcohol Values: ");
+  // d_SerialPrintlnV(alc_reading);
+  // d_SerialPrint("Measured CH3 Values : ");
+  // d_SerialPrintlnV(ch3_reading);
+
+  Serial.print("measured alcohol values: ");
+  Serial.println(alc_reading);
+  Serial.print("measured ch3 values: ");
+  Serial.println(ch3_reading);
 
   if (alc_reading >= thresholds.alc_exp || ch3_reading >= thresholds.ch3_exp)
   {
@@ -146,7 +151,6 @@ void ParseBoxes(char *resp)
 
             Packet config;
             PackPacket(config, PacketType::PKT_CONFIG, 9, FoodCondition::UNKNOWN, active_boxes[active_box_count].p_id);
-            radio.openWritingPipe(active_boxes[active_box_count].address);
 
             radio.stopListening();
 

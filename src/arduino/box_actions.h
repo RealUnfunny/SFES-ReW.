@@ -1,3 +1,5 @@
+#pragma once
+
 #include <.common/comm.h>
 #include <Arduino.h>
 #include <SoftwareSerial.h>
@@ -23,7 +25,7 @@ enum ThresholdPins // Current Testing Values
   CH3_THRESHOLD_EXP = 600
 };
 
-FoodCondition evalLocal();
+FoodCondition EvalLocal();
 void RadioSetup();
 void ParseBoxes(char *resp);
 
